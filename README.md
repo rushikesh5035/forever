@@ -10,25 +10,17 @@ A dynamic and user-friendly e-commerce platform designed for clothing stores. Bu
 
 ### **User Panel**
 
-- **Authentication:**
-  - Register and log in with secure JWT-based authentication.
-- **Product Browsing:**
-  - Effortlessly explore product categories, search, and apply filters by gender categorie, and price.
-- **Shopping Cart:**
-  - Add products to the cart, adjust quantities, or remove items with ease.
-- **Payment Options:**
-  - Flexible payment methods, including Stripe, Razorpay, and Cash on Delivery (COD).
-- **Order Management:**
-  - View order history, track order status, and receive updates.
+- **Authentication:** Register and log in with secure JWT-based authentication.
+- **Product Browsing:** Effortlessly explore product categories, search, and apply filters by gender categorie, and price.
+- **Shopping Cart:** Add products to the cart, adjust quantities, or remove items with ease.
+- **Payment Options:** Flexible payment methods, including Stripe, Razorpay, and Cash on Delivery (COD).
+- **Order Management:** View order history, track order status, and receive updates.
 
 ### **Admin Panel**
 
-- **Authentication:**
-  - Role-based secure access for administrators.
-- **Product Management:**
-  - Add, edit, and delete products with comprehensive control.
-- **Order Management:**
-  - Monitor and update the status of user orders.
+- **Authentication:** Role-based secure access for administrators.
+- **Product Management:** Add, edit, and delete products with comprehensive control.
+- **Order Management:** Monitor and update the status of user orders.
 
 ---
 

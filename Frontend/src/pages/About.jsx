@@ -64,7 +64,7 @@ const About = () => {
           </p>
         </div>
       </div>
-      <NewslatterBox />
+      {/* <NewslatterBox /> */}
     </div>
   );
 };

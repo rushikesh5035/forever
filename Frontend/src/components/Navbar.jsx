@@ -47,6 +47,13 @@ const Navbar = () => {
           <p>CONTACT</p>
           <hr className="w-2/4 border-none h-[1.5px] bg-gray-700 hidden" />
         </NavLink>
+        <NavLink
+          to="https://forever-admin-sable.vercel.app/"
+          className="flex flex-col items-center gap-1"
+        >
+          <p>ADMIN</p>
+          <hr className="w-2/4 border-none h-[1.5px] bg-gray-700 hidden" />
+        </NavLink>
       </ul>
 
       <div className="flex items-center gap-6">
@@ -145,6 +152,13 @@ const Navbar = () => {
             to="/contact"
           >
             CONTACT
+          </NavLink>
+          <NavLink
+            onClick={() => setVisible(false)}
+            className="py-2 pl-6 border hover:font-bold"
+            to="https://forever-admin-sable.vercel.app/"
+          >
+            ADMIN
           </NavLink>
         </div>
       </div>
