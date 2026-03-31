@@ -1,0 +1,72 @@
+name: forever-local
+
+services:
+  backend:
+    container_name: forever-backend
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./Backend/.env
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - forever-net
+
+  frontend:
+    container_name: forever-frontend
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: ""
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - forever-net
+
+  admin:
+    container_name: forever-admin
+    build:
+      context: ./Admin
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: ""
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - forever-net
+
+networks:
+  forever-net:
+    driver: bridge

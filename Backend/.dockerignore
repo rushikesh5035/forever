@@ -1,0 +1,15 @@
+# Node artifacts
+node_modules
+npm-debug.log*
+
+# Env and secrets
+.env
+.env.*
+
+# Build/test output
+dist
+coverage
+
+# Git metadata
+.git
+.gitignore
