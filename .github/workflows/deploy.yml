@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -43,8 +43,6 @@ jobs:
           context: ./Frontend
           file: ./Frontend/Dockerfile
           push: true
-          build-args: |
-            VITE_BACKEND_URL=
           tags: |
             ${{ env.IMAGE_FRONTEND }}:latest
             ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
@@ -55,8 +53,6 @@ jobs:
           context: ./Admin
           file: ./Admin/Dockerfile
           push: true
-          build-args: |
-            VITE_BACKEND_URL=
           tags: |
             ${{ env.IMAGE_ADMIN }}:latest
             ${{ env.IMAGE_ADMIN }}:${{ github.sha }}
@@ -69,102 +65,49 @@ jobs:
           IMAGE_BACKEND: ${{ env.IMAGE_BACKEND }}
           IMAGE_FRONTEND: ${{ env.IMAGE_FRONTEND }}
           IMAGE_ADMIN: ${{ env.IMAGE_ADMIN }}
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          CLOUDINARY_NAME: ${{ secrets.CLOUDINARY_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_SECRET_KEY: ${{ secrets.CLOUDINARY_SECRET_KEY }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
-          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
+          GITHUB_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,IMAGE_BACKEND,IMAGE_FRONTEND,IMAGE_ADMIN,MONGODB_URI,CLOUDINARY_NAME,CLOUDINARY_API_KEY,CLOUDINARY_SECRET_KEY,JWT_SECRET,ADMIN_EMAIL,ADMIN_PASSWORD,STRIPE_SECRET_KEY,RAZORPAY_KEY_SECRET,RAZORPAY_KEY_ID
+          envs: DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,IMAGE_BACKEND,IMAGE_FRONTEND,IMAGE_ADMIN,GITHUB_SHA
           script_stop: true
           script: |
-            # Create app directory
             set -e
             mkdir -p ~/forever
             cd ~/forever
 
-            # Docker Hub login
-            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            echo "Docker login with retries..."
+            for i in 1 2 3; do
+              echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin && break
+              echo "Retrying Docker login..."
+              sleep 5
+            done
 
-            # Create/Update .env file from secrets
-            cat > .env <<EOF
-            NODE_ENV=production
-            PORT=4000
-            MONGODB_URI=${MONGODB_URI}
-            CLOUDINARY_NAME=${CLOUDINARY_NAME}
-            CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
-            CLOUDINARY_SECRET_KEY=${CLOUDINARY_SECRET_KEY}
-            JWT_SECRET=${JWT_SECRET}
-            ADMIN_EMAIL=${ADMIN_EMAIL}
-            ADMIN_PASSWORD=${ADMIN_PASSWORD}
-            STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-            RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
-            RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
-            EOF
+            # Ensure compose and env files exist on EC2
+            test -f docker-compose.prod.yml
+            test -f .env
 
-            # Create compose file
-            cat > docker-compose.prod.yml <<EOF
-            services:
-              backend:
-                image: "${IMAGE_BACKEND}:latest"
-                container_name: forever-backend
-                restart: unless-stopped
-                env_file:
-                  - ./.env
-                ports:
-                  - "4000:4000"
-                healthcheck:
-                  test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/"]
-                  interval: 30s
-                  timeout: 5s
-                  retries: 3
-                  start_period: 20s
-                networks:
-                  - forever-net
+            # Update image tags only (do not overwrite .env secrets)
+            echo "Updating image tags safely..."
+            echo "IMAGE_BACKEND=$IMAGE_BACKEND:$GITHUB_SHA" > .env.images
+            echo "IMAGE_FRONTEND=$IMAGE_FRONTEND:$GITHUB_SHA" >> .env.images
+            echo "IMAGE_ADMIN=$IMAGE_ADMIN:$GITHUB_SHA" >> .env.images
 
-              frontend:
-                image: "${IMAGE_FRONTEND}:latest"
-                container_name: forever-frontend
-                restart: unless-stopped
-                depends_on:
-                  backend:
-                    condition: service_healthy
-                ports:
-                  - "80:8080"
-                networks:
-                  - forever-net
+            # Pull latest images and restart services (low-downtime)
+            echo "Pulling latest images..."
+            docker compose --env-file .env.images -f docker-compose.prod.yml pull || {
+              echo "Image pull failed"
+              exit 1
+            }
 
-              admin:
-                image: "${IMAGE_ADMIN}:latest"
-                container_name: forever-admin
-                restart: unless-stopped
-                depends_on:
-                  backend:
-                    condition: service_healthy
-                ports:
-                  - "81:8080"
-                networks:
-                  - forever-net
+            echo "Starting containers..."
+            docker compose --env-file .env.images -f docker-compose.prod.yml up -d --remove-orphans
 
-            networks:
-              forever-net:
-                driver: bridge
-            EOF
+            echo "Checking container status..."
+            docker compose --env-file .env.images -f docker-compose.prod.yml ps
 
-            docker compose version
-            nl -ba docker-compose.prod.yml
-
-            # Pull latest images and restart services
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-            # Clean up dangling images
+            echo "Cleaning up dangling images..."
             docker image prune -f
+
+            echo "Deployment successful!"
