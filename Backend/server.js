@@ -18,7 +18,7 @@ connectCloudinary();
 
 //
 app.use(express.json());
-app.use(cors());
+app.use(cors());  
 
 // API endpoints
 app.use("/api/user", userRouter);
@@ -28,6 +28,10 @@ app.use("/api/order", orderRouter);
 
 app.get("/", (req, res) => {
   res.send("API Working");
+});
+
+app.get("/api", (req, res) => {
+  res.send("API Root Working");
 });
 
 app.listen(PORT, () => {
