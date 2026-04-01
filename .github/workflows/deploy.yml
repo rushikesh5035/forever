@@ -114,7 +114,7 @@ jobs:
             cat > docker-compose.prod.yml <<EOF
             services:
               backend:
-                image: ${IMAGE_BACKEND}:latest
+                image: "${IMAGE_BACKEND}:latest"
                 container_name: forever-backend
                 restart: unless-stopped
                 env_file:
@@ -131,7 +131,7 @@ jobs:
                   - forever-net
 
               frontend:
-                image: ${IMAGE_FRONTEND}:latest
+                image: "${IMAGE_FRONTEND}:latest"
                 container_name: forever-frontend
                 restart: unless-stopped
                 depends_on:
@@ -143,7 +143,7 @@ jobs:
                   - forever-net
 
               admin:
-                image: ${IMAGE_ADMIN}:latest
+                image: "${IMAGE_ADMIN}:latest"
                 container_name: forever-admin
                 restart: unless-stopped
                 depends_on:
@@ -158,6 +158,9 @@ jobs:
               forever-net:
                 driver: bridge
             EOF
+
+            docker compose version
+            nl -ba docker-compose.prod.yml
 
             # Pull latest images and restart services
             docker compose -f docker-compose.prod.yml pull
