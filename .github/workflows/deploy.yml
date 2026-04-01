@@ -1,10 +1,8 @@
-name: Build And Deploy
+name: deployment test
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [main]
 
 env:
   IMAGE_BACKEND: ${{ secrets.DOCKERHUB_USERNAME }}/forever-backend
@@ -12,22 +10,24 @@ env:
   IMAGE_ADMIN: ${{ secrets.DOCKERHUB_USERNAME }}/forever-admin
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout the code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
-      - name: Setup Buildx
+      - name: Setup buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - name: Docker login
+        uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push backend
+      - name: Build and push backend image
         uses: docker/build-push-action@v6
         with:
           context: ./Backend
@@ -37,7 +37,7 @@ jobs:
             ${{ env.IMAGE_BACKEND }}:latest
             ${{ env.IMAGE_BACKEND }}:${{ github.sha }}
 
-      - name: Build and push frontend
+      - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
           context: ./Frontend
@@ -49,7 +49,7 @@ jobs:
             ${{ env.IMAGE_FRONTEND }}:latest
             ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
 
-      - name: Build and push admin
+      - name: Build and push admin image
         uses: docker/build-push-action@v6
         with:
           context: ./Admin
@@ -60,3 +60,108 @@ jobs:
           tags: |
             ${{ env.IMAGE_ADMIN }}:latest
             ${{ env.IMAGE_ADMIN }}:${{ github.sha }}
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_BACKEND: ${{ env.IMAGE_BACKEND }}
+          IMAGE_FRONTEND: ${{ env.IMAGE_FRONTEND }}
+          IMAGE_ADMIN: ${{ env.IMAGE_ADMIN }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          CLOUDINARY_NAME: ${{ secrets.CLOUDINARY_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_SECRET_KEY: ${{ secrets.CLOUDINARY_SECRET_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,IMAGE_BACKEND,IMAGE_FRONTEND,IMAGE_ADMIN,MONGODB_URI,CLOUDINARY_NAME,CLOUDINARY_API_KEY,CLOUDINARY_SECRET_KEY,JWT_SECRET,ADMIN_EMAIL,ADMIN_PASSWORD,STRIPE_SECRET_KEY,RAZORPAY_KEY_SECRET,RAZORPAY_KEY_ID
+          script_stop: true
+          script: |
+            # Create app directory
+            set -e
+            mkdir -p ~/forever
+            cd ~/forever
+
+            # Docker Hub login
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+            # Create/Update .env file from secrets
+            cat > .env <<EOF
+            NODE_ENV=production
+            PORT=4000
+            MONGODB_URI=${MONGODB_URI}
+            CLOUDINARY_NAME=${CLOUDINARY_NAME}
+            CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+            CLOUDINARY_SECRET_KEY=${CLOUDINARY_SECRET_KEY}
+            JWT_SECRET=${JWT_SECRET}
+            ADMIN_EMAIL=${ADMIN_EMAIL}
+            ADMIN_PASSWORD=${ADMIN_PASSWORD}
+            STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+            RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+            RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+            EOF
+
+            # Create compose file
+            cat > docker-compose.prod.yml <<EOF
+            services:
+              backend:
+                image: ${IMAGE_BACKEND}:latest
+                container_name: forever-backend
+                restart: unless-stopped
+                env_file:
+                  - ./.env
+                ports:
+                  - "4000:4000"
+                healthcheck:
+                  test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/"]
+                  interval: 30s
+                  timeout: 5s
+                  retries: 3
+                  start_period: 20s
+                networks:
+                  - forever-net
+
+              frontend:
+                image: ${IMAGE_FRONTEND}:latest
+                container_name: forever-frontend
+                restart: unless-stopped
+                depends_on:
+                  backend:
+                    condition: service_healthy
+                ports:
+                  - "80:8080"
+                networks:
+                  - forever-net
+
+              admin:
+                image: ${IMAGE_ADMIN}:latest
+                container_name: forever-admin
+                restart: unless-stopped
+                depends_on:
+                  backend:
+                    condition: service_healthy
+                ports:
+                  - "81:8080"
+                networks:
+                  - forever-net
+
+            networks:
+              forever-net:
+                driver: bridge
+            EOF
+
+            # Pull latest images and restart services
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Clean up dangling images
+            docker image prune -f
